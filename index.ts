@@ -175,10 +175,8 @@ function share({ resetOnRefCountZero } = { resetOnRefCountZero: true }) {
   };
 }
 
-const source = interval(1000).pipe(
-  tap((val) => console.log('interval', val)),
-  share({ resetOnRefCountZero: true })
-);
+// const source = interval(1000);
+
 // const subject = new Subject();
 // source.subscribe(subject);
 // subject.subscribe(observer1);
@@ -187,6 +185,11 @@ const source = interval(1000).pipe(
 // setTimeout(() => {
 //   subject.subscribe(observer3);
 // }, 5000);
+////////////////////////////////////////////////////////////////////////
+const source = interval(1000).pipe(
+  tap((val) => console.log('interval', val)),
+  share({ resetOnRefCountZero: true })
+);
 
 const subscription = new Subscription();
 
