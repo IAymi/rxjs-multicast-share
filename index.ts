@@ -37,17 +37,17 @@ class Subscription {
 }
 
 class Observable {
+  subscriber: (observer: Observer) => TearDown;
+  constructor(subscriber: (observer: Observer) => TearDown) {
+    this.subscriber = subscriber;
+  }
+
   pipe(this: Observable, ...operators: OperatorFunction[]) {
     let source = this;
     operators.forEach((operator) => {
       source = operator(source);
     });
     return source;
-  }
-
-  subscriber: (observer: Observer) => TearDown;
-  constructor(subscriber: (observer: Observer) => TearDown) {
-    this.subscriber = subscriber;
   }
 
   subscribe(observer: Observer) {
@@ -69,9 +69,11 @@ class Subject implements Observer {
   next(value: any) {
     this.observers.forEach((observer) => observer.next(value));
   }
+
   error(err: any) {
     this.observers.forEach((observer) => observer.error(err));
   }
+
   complete() {
     this.observers.forEach((observer) => observer.complete());
   }
@@ -83,9 +85,7 @@ class Subject implements Observer {
     });
     return source;
   }
-
   subscribe(observer: Observer) {
-    console.log('subscribe!!');
     this.observers.push(observer);
     const teardown: TearDown = () => {
       const index = this.observers.findIndex((b) => b === observer);
@@ -93,12 +93,33 @@ class Subject implements Observer {
         this.observers.splice(index, 1);
       }
     };
-
     const subscription = new Subscription(teardown);
     return subscription;
   }
 }
 
+function tap(fn: (value: any) => void) {
+  return (source: Observable) =>
+    new Observable((observer) => {
+      console.log('subscribe!');
+      const subscription = source.subscribe({
+        next: (value) => {
+          fn(value);
+          observer.next(value);
+        },
+        error: (err) => {
+          observer.error(err);
+        },
+        complete: () => {
+          observer.complete();
+        },
+      });
+      return () => {
+        console.log('unsubscribe!');
+        subscription.unsubscribe();
+      };
+    });
+}
 // Start coding
 
 import { interval } from 'rxjs';
@@ -121,12 +142,69 @@ const observer3: Observer = {
   complete: () => console.log('observer3 complete'),
 };
 
-const source = interval(1000);
-const subject = new Subject();
-source.subscribe(subject);
-subject.subscribe(observer1);
-subject.subscribe(observer2);
+function share({ resetOnRefCountZero } = { resetOnRefCountZero: true }) {
+  return (source: Observable) => {
+    const subject = new Subject();
+    let subscription: Subscription;
+    let refCount = 0;
+
+    const connect = () => {
+      subscription = source.subscribe(subject);
+    };
+
+    const resetOnRefCount = () => {
+      if (refCount === 0) {
+        if (resetOnRefCountZero === true) {
+          subscription.unsubscribe();
+          subscription = null;
+        }
+      }
+    };
+    return new Observable((observer) => {
+      refCount++;
+      const subSubscription = subject.subscribe(observer);
+      if (!subscription) {
+        connect();
+      }
+      return () => {
+        refCount--;
+        resetOnRefCount();
+        subSubscription.unsubscribe();
+      };
+    });
+  };
+}
+
+const source = interval(1000).pipe(
+  tap((val) => console.log('interval', val)),
+  share({ resetOnRefCountZero: true })
+);
+// const subject = new Subject();
+// source.subscribe(subject);
+// subject.subscribe(observer1);
+// subject.subscribe(observer2);
+
+// setTimeout(() => {
+//   subject.subscribe(observer3);
+// }, 5000);
+
+const subscription = new Subscription();
+
+subscription.add(source.subscribe(observer1));
+subscription.add(source.subscribe(observer2));
 
 setTimeout(() => {
-  subject.subscribe(observer3);
+  subscription.add(source.subscribe(observer3));
 }, 5000);
+
+setTimeout(() => {
+  subscription.unsubscribe();
+}, 10000);
+
+setTimeout(() => {
+  subscription.add(source.subscribe(observer));
+}, 15000);
+
+setTimeout(() => {
+  subscription.unsubscribe();
+}, 20000);
